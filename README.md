@@ -50,5 +50,3 @@ submits — one row per `entries[]` element, in order.
   line inside the generated script.
 - Time values are always well-formed (`09:00 am`) because am/pm is a selector,
   not free text.
-- `script.js` is a hand-editable template; `script.generated.js` is overwritten
-  every time you click Generate.
