@@ -60,6 +60,25 @@ rows) does nothing and moves on.
   flag needed.
 - **Skip** is the only way to leave a day alone; its button is never clicked.
 
+## Build a standalone executable
+
+Bundle the UI into a single executable (no Python needed to run it):
+
+1. Install PyInstaller (once):
+
+   ```bash
+   pip install pyinstaller
+   ```
+
+2. Build:
+
+   ```bash
+   pyinstaller --onefile logbook_ui.py
+   ```
+
+The binary lands in `dist/` (e.g. `dist/logbook_ui.exe` on Windows). Build
+artifacts (`build/`, `dist/`, `*.spec`) are generated and safe to delete.
+
 ## Notes
 
 - Assumes exactly one `.detailsbtn` per day, in day order. If a filled day
