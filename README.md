@@ -59,6 +59,11 @@ rows) does nothing and moves on.
 - Filling a day that's already filled (orange) just **overwrites** it — no extra
   flag needed.
 - **Skip** is the only way to leave a day alone; its button is never clicked.
+- **Sundays** are auto-OFF on the site and have **no button**. In the UI their
+  rows are forced **Off** and locked (flags can't be toggled, fields disabled),
+  and they are dropped from the generated `entries[]` so the rest stays aligned.
+  Set **Start weekday** correctly so the right rows are detected as Sundays. The
+  generate popup reports how many were excluded.
 
 ## Build a standalone executable
 

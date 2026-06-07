@@ -90,6 +90,7 @@ class Row:
     def __init__(self, parent: tk.Widget, index: int, app: "App") -> None:
         self.app = app
         self.index = index
+        self.weekday = ""
 
         self.off_var = tk.BooleanVar(value=False)
         self.skip_var = tk.BooleanVar(value=False)
@@ -156,6 +157,14 @@ class Row:
                 w.config(state="disabled" if disabled else "readonly")
             else:
                 w.config(state="disabled" if disabled else "normal")
+
+    def lock_sunday(self) -> None:
+        """Force this row OFF and lock its flags (Sundays have no site button)."""
+        self.off_var.set(True)
+        self.skip_var.set(False)
+        self._on_off()  # disable the data fields
+        self.off_chk.config(state="disabled")
+        self.skip_chk.config(state="disabled")
 
     def _on_skip(self) -> None:
         if self.skip_var.get():
@@ -347,11 +356,18 @@ class App:
         for i in range(n):
             row = Row(self.grid_frame, i, self)
             wd = WEEKDAYS[(start + i) % 7]
+            row.weekday = wd
             row.set_day_label(f"{i + 1:>2}  {wd}")
             row.grid(i + 1)
             if i < len(old):
                 row.load(old[i])
             self.rows.append(row)
+        self._lock_sundays()
+
+    def _lock_sundays(self) -> None:
+        for row in self.rows:
+            if row.weekday == "Sun":
+                row.lock_sunday()
 
     def apply_clock_all(self) -> None:
         """Set clock in/out on every non-off row to the bulk values."""
@@ -381,6 +397,7 @@ class App:
             row.activity.set("")
             row.description.set("")
             row._on_skip()  # re-enable fields (clears off/skip disabling)
+        self._lock_sundays()
 
     def apply_text_all(self) -> None:
         """Set activity/description on every non-off row to the bulk values."""
@@ -405,6 +422,7 @@ class App:
         self.rebuild_rows()
         for row, entry in zip(self.rows, data):
             row.load(entry)
+        self._lock_sundays()
 
     def save_json(self) -> None:
         path = filedialog.asksaveasfilename(
@@ -420,7 +438,11 @@ class App:
         messagebox.showinfo("Saved", f"Saved {path}")
 
     def generate(self) -> None:
-        entries = self.collect()
+        # Sundays have no button on the site (auto-OFF), so drop them here to
+        # keep entries[] aligned with the buttons the page actually renders.
+        rows = [r for r in self.rows if r.weekday != "Sun"]
+        skipped_sundays = len(self.rows) - len(rows)
+        entries = [r.to_entry() for r in rows]
         entries_json = json.dumps(entries, indent=4, ensure_ascii=False)
         script = SCRIPT_TEMPLATE.format(entries_json=entries_json)
 
@@ -432,7 +454,8 @@ class App:
         messagebox.showinfo(
             "Generated",
             f"Wrote {out.name} and copied script to clipboard.\n"
-            f"{len(entries)} rows.",
+            f"{len(entries)} rows ({skipped_sundays} Sundays excluded — "
+            f"no button on site).",
         )
 
 
