@@ -46,12 +46,17 @@ SCRIPT_TEMPLATE = """\
 const entries = {entries_json};
 
 // =====================================================================
-const buttons = document.querySelectorAll('.button.button-primary.detailsbtn'); // BUTTON SUBMIT
-// const buttons = document.querySelectorAll(".button.button-orange.detailsbtn");      // BUTTON EDIT
-const buttonsArray = Array.from(buttons);
+// One combined array, in document order = day order. Blue (empty) and orange
+// (filled) day buttons both carry `.detailsbtn`, so this keeps index i aligned
+// to day i regardless of color. Clicking a button edits that day whether it was
+// blue or orange -> filling a filled day just overwrites it (auto-override).
+const buttons = Array.from(document.querySelectorAll('.detailsbtn'));
 
-buttonsArray.forEach((b, i) => {{
+buttons.forEach((b, i) => {{
     const entry = entries[i];
+
+    if (entry && entry.skip) return; // leave this day untouched
+
     const editClockIn = document.getElementById('editClockIn');
     const editClockOut = document.getElementById('editClockOut');
     const editActivity = document.getElementById('editActivity');
@@ -87,6 +92,7 @@ class Row:
         self.index = index
 
         self.off_var = tk.BooleanVar(value=False)
+        self.skip_var = tk.BooleanVar(value=False)
         self.in_time = tk.StringVar(value=DEFAULT_IN_TIME)
         self.in_ampm = tk.StringVar(value=DEFAULT_IN_AMPM)
         self.out_time = tk.StringVar(value=DEFAULT_OUT_TIME)
@@ -97,6 +103,9 @@ class Row:
         self.day_label = ttk.Label(parent, width=10, anchor="w")
         self.off_chk = ttk.Checkbutton(
             parent, variable=self.off_var, command=self._on_off
+        )
+        self.skip_chk = ttk.Checkbutton(
+            parent, variable=self.skip_var, command=self._on_skip
         )
 
         self.in_frame, self.in_widgets = self._time_cell(
@@ -111,6 +120,7 @@ class Row:
         self.widgets = [
             self.day_label,
             self.off_chk,
+            self.skip_chk,
             self.in_frame,
             self.out_frame,
             self.activity_e,
@@ -147,7 +157,21 @@ class Row:
             else:
                 w.config(state="disabled" if disabled else "normal")
 
+    def _on_skip(self) -> None:
+        if self.skip_var.get():
+            # skip disables everything else on the row
+            self.off_chk.config(state="disabled")
+            for w in (self.activity_e, self.description_e):
+                w.config(state="disabled")
+            for w in self.in_widgets + self.out_widgets:
+                w.config(state="disabled")
+        else:
+            self.off_chk.config(state="normal")
+            self._on_off()
+
     def to_entry(self) -> dict[str, str] | None:
+        if self.skip_var.get():
+            return {"skip": True}
         if self.off_var.get():
             return None
         return {
@@ -160,10 +184,17 @@ class Row:
     def load(self, entry: dict[str, str] | None) -> None:
         if entry is None:
             self.off_var.set(True)
-            self._on_off()
+            self.skip_var.set(False)
+            self._on_skip()
+            return
+        if entry.get("skip"):
+            self.off_var.set(False)
+            self.skip_var.set(True)
+            self._on_skip()
             return
         self.off_var.set(False)
-        self._on_off()
+        self.skip_var.set(False)
+        self._on_skip()
         it, ia = split_time(entry.get("editClockIn", DEFAULT_IN_TIME))
         ot, oa = split_time(entry.get("editClockOut", DEFAULT_OUT_TIME))
         self.in_time.set(it)
@@ -279,7 +310,7 @@ class App:
             lambda e: canvas.yview_scroll(int(-e.delta / 120), "units"),
         )
 
-        headers = ["Day", "Off", "Clock In", "Clock Out",
+        headers = ["Day", "Off", "Skip", "Clock In", "Clock Out",
                    "Activity", "Description"]
         for col, h in enumerate(headers):
             ttk.Label(self.grid_frame, text=h, font=("", 9, "bold")).grid(
@@ -293,6 +324,9 @@ class App:
             side="left", padx=4
         )
         ttk.Button(bar, text="Save JSON…", command=self.save_json).pack(
+            side="left", padx=4
+        )
+        ttk.Button(bar, text="Reset All", command=self.reset_all).pack(
             side="left", padx=4
         )
         ttk.Button(
@@ -322,17 +356,36 @@ class App:
     def apply_clock_all(self) -> None:
         """Set clock in/out on every non-off row to the bulk values."""
         for row in self.rows:
-            if row.off_var.get():
+            if row.off_var.get() or row.skip_var.get():
                 continue
             row.in_time.set(self.bulk_in_time.get())
             row.in_ampm.set(self.bulk_in_ampm.get())
             row.out_time.set(self.bulk_out_time.get())
             row.out_ampm.set(self.bulk_out_ampm.get())
 
+    def reset_all(self) -> None:
+        """Restore every row to defaults (times + activity/description, clear flags)."""
+        if not messagebox.askyesno(
+            "Reset All",
+            "Reset every row's clock times and activity/description to defaults "
+            "and clear all Off/Skip flags?\n\nThis cannot be undone.",
+        ):
+            return
+        for row in self.rows:
+            row.off_var.set(False)
+            row.skip_var.set(False)
+            row.in_time.set(DEFAULT_IN_TIME)
+            row.in_ampm.set(DEFAULT_IN_AMPM)
+            row.out_time.set(DEFAULT_OUT_TIME)
+            row.out_ampm.set(DEFAULT_OUT_AMPM)
+            row.activity.set("")
+            row.description.set("")
+            row._on_skip()  # re-enable fields (clears off/skip disabling)
+
     def apply_text_all(self) -> None:
         """Set activity/description on every non-off row to the bulk values."""
         for row in self.rows:
-            if row.off_var.get():
+            if row.off_var.get() or row.skip_var.get():
                 continue
             row.activity.set(self.bulk_activity.get())
             row.description.set(self.bulk_description.get())
