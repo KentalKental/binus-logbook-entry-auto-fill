@@ -1,2 +1,6 @@
 script.generated.js
 json-saves/
+__pycache__
+build
+dist
+logbook_ui.spec
