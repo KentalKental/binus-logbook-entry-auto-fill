@@ -281,7 +281,6 @@ class AIHandler:
             model='gemini-2.5-flash',
             contents=prompt,
             config={
-                    # This forces Gemini to return raw JSON data only, stripping markdown blocks entirely
                     "response_mime_type": "application/json"
                 }
         )
@@ -587,19 +586,14 @@ class App:
         files_header = ttk.Label(frame, text="Selected Files:", font=("Arial", 10, "bold"))
         files_header.pack(anchor="w", pady=(10, 2))
 
-        # This label will change dynamically when files are imported
         self.label_imported_files = ttk.Label(frame, text="No files selected", font=("Arial", 10), justify="left", wraplength=400)
         self.label_imported_files.pack(anchor="w", fill="x", pady=(0, 15))
 
-        # ⭐ NEW: Add the Indeterminate Progress Bar here (hidden by default)
         self.progress = ttk.Progressbar(frame, mode='indeterminate')
 
-        # 5. Action Buttons Frame (at the very bottom)
         btn_frame = ttk.Frame(frame)
         btn_frame.pack(fill="x", side="bottom", pady=5)
 
-        # Auto-Fill Button (Left side)
-        # 💡 Pointed command to the new trigger method instead of running the payload directly
         self.autofill_button = ttk.Button(btn_frame, text="Auto-Fill", command=self.start_autofill_thread)
         self.autofill_button.pack(side="right", padx=5)
 
@@ -611,15 +605,12 @@ class App:
         )
         
         if not paths:
-            return  # User cancelled the dialog
+            return 
             
-        # Save full paths to the class instance so your LLM function can read the files
         self.selected_files = list(paths)
         
-        # Extract just the filenames (not full paths) so it looks clean in the UI
         filenames = [os.path.basename(p) for p in self.selected_files]
         
-        # Update the UI label to show the selected files (joined by newlines)
         display_text = "\n".join(filenames)
         self.label_imported_files.config(text=display_text)
 
@@ -644,12 +635,6 @@ class App:
                     "editDescription": "Mengkloning repository dari GitLab, menginstal dependency menggunakan pip, dan memastikan aplikasi dapat berjalan di lokal tanpa error."
                 }},
                 {{
-                    "editClockIn": "{DEFAULT_IN_TIME} am",
-                    "editClockOut": "{DEFAULT_OUT_TIME} pm",
-                    "editActivity": "Slicing UI halaman login dan registrasi",
-                    "editDescription": "Mengubah desain figma menjadi komponen kode HTML/CSS dan memastikan kesesuaian tata letak serta responsivitasnya."
-                }},
-                {{
                     "editClockIn": "OFF",
                     "editClockOut": "OFF",
                     "editActivity": "OFF",
@@ -660,13 +645,7 @@ class App:
         
         final_prompt = f'''
             For context, you are given a task to fill out Activity and Description in an internship logbook.
-            Your job is to fill out these fields and stretch them out across a whole month (roughly 4 weeks / 28-31 entries).
-            
-            There will be additional context giving you the details on what the user did throughout the internship. 
-            You must expand and describe what the user possibly did based on those tasks. Extrapolate logically if details are brief to make it look professional.
-            
-            Combine the context from this baseline prompt and any files/text provided here:
-            {current_prompt}.
+            Your job is to fill out these fields and stretch them out across a whole month.
 
             CRITICAL STRUCTURAL RULES:
             1. Return the data matching this JSON array structure: {output_format}
@@ -675,6 +654,12 @@ class App:
                 a. Number of days in Month: {self.days_var.get()}
                 b. Start of day : {self.start_var.get()}
                 c. Make sure to account national Indonesian Holidays too, set it as OFF if it exists.
+            
+            There will be additional context giving you the details on what the user did throughout the internship. 
+            You must expand and describe what the user possibly did based on those tasks. Extrapolate logically if details are brief to make it look professional.
+            
+            Combine the context from this baseline prompt and any files/text provided here:
+            {current_prompt}.
         '''
 
         try:
