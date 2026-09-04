@@ -16,6 +16,8 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from tkinter import simpledialog
+from PIL import Image, ImageTk
+
 
 from google import genai
 from google.genai import errors
@@ -286,12 +288,20 @@ class AIHandler:
         )
         return response.text
 
+class assignment:
+    def __init__() -> None:
+
+        pass
+
+
 class App:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         root.title("Logbook Entry Editor")
         self.rows: list[Row] = []
         self.ai_handler = AIHandler()
+        self.tc_pdf_text = None
+        self.ees_pdf_text = None
         
 
         self._build_toolbar()
@@ -418,22 +428,9 @@ class App:
         )
         ttk.Button(
             bar, text="Generate script.js + copy", command=self.generate
-        ).pack(side="right", padx=4)
-    
-    def api_input_popup(self):
-        """Opens a popup dialog asking the user to manually input the API key."""
-        # simpledialog.askstring creates a quick modal popup input box
-        user_input = simpledialog.askstring(
-            "API Key Required", 
-            "Please enter your Gemini/OpenAI API Key:",
-            show="*"  # This masks the input like a password field
-        )
-        
-        if user_input:
-            return user_input.strip()
-        return None
+        ).pack(side="right", padx=4)    
 
-    def gen_ai_menu(self):
+    def api_input_popup(self):
         """Checks for the API key; if missing, prompts the user before proceeding."""
         while not self.ai_handler.is_ready():
             user_input = simpledialog.askstring(
@@ -452,8 +449,264 @@ class App:
             if not success:
                 messagebox.showerror("Invalid Key", "The API key provided is incorrect.")
 
-        # Once valid, move on to your menu popup
-        self.open_popup()
+    def gen_ai_menu(self):
+        self.api_input_popup()
+
+        self.popup = tk.Toplevel(self.root)
+        self.popup.title("Auto-Fill Activities")
+        
+        # Center the popup on the screen
+        window_width = 400
+        window_height = 250
+        screen_width = self.popup.winfo_screenwidth()
+        screen_height = self.popup.winfo_screenheight()
+        center_x = int((screen_width - window_width) / 2)
+        center_y = int((screen_height - window_height) / 2)
+        self.popup.geometry(f"{window_width}x{window_height}+{center_x}+{center_y}")
+        self.popup.grab_set()
+
+        frame = ttk.Frame(self.popup, padding=20)
+        frame.pack(fill="both", expand=True)
+
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(fill="both", expand=True, pady=5)
+
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        logbook_img_path = os.path.join(script_dir, "assets", "logbook.png")
+        assignment_img_path = os.path.join(script_dir, "assets", "assignment.png")
+
+        # Keep a reference to the PhotoImages to prevent garbage collection
+        try:
+            # Desired image size
+            img_size = (100, 100)
+            
+            # Load and resize Logbook image
+            pil_logbook = Image.open(logbook_img_path)
+            # Use Image.Resampling.LANCZOS if available, else Image.LANCZOS for older Pillow versions
+            resample_filter = getattr(Image, 'Resampling', Image).LANCZOS
+            pil_logbook = pil_logbook.resize(img_size, resample_filter)
+            self.logbook_img = ImageTk.PhotoImage(pil_logbook)
+            
+            # Load and resize Assignment image
+            pil_assignment = Image.open(assignment_img_path)
+            pil_assignment = pil_assignment.resize(img_size, resample_filter)
+            self.assignment_img = ImageTk.PhotoImage(pil_assignment)
+            
+            image_kwargs_logbook = {"image": self.logbook_img, "compound": "top"}
+            image_kwargs_assignment = {"image": self.assignment_img, "compound": "top"}
+        except Exception as e:
+            print(f"Failed to load images: {e}")
+            image_kwargs_logbook = {}
+            image_kwargs_assignment = {}
+
+        self.logbook_button = ttk.Button(
+            btn_frame, 
+            text="Logbook Auto-fill", 
+            command=self.logbook_ai_popup,
+            **image_kwargs_logbook
+        )
+        self.logbook_button.pack(side="left", padx=10, expand=True, fill="both")
+
+        self.assignment_button = ttk.Button(
+            btn_frame, 
+            text="Assignment Auto-fill", 
+            command=self.assignment_auto_fill,
+            **image_kwargs_assignment
+        )
+        self.assignment_button.pack(side="right", padx=10, expand=True, fill="both")
+
+    def assignment_auto_fill(self):
+        # 1. Transform the existing Toplevel window
+        for widget in self.popup.winfo_children():
+            widget.destroy()
+
+        self.popup.title("Assignment Auto-Fill")
+        self.selected_files = []
+        
+        window_width = 450
+        window_height = 480
+        screen_width = self.popup.winfo_screenwidth()
+        screen_height = self.popup.winfo_screenheight()
+        center_x = int((screen_width - window_width) / 2)
+        center_y = int((screen_height - window_height) / 2)
+        self.popup.geometry(f"{window_width}x{window_height}+{center_x}+{center_y}")
+
+        frame = ttk.Frame(self.popup, padding=20)
+        frame.pack(fill="both", expand=True)
+
+        # 4. File Management Section (TC and EES)
+        file_frame = ttk.Frame(frame)
+        file_frame.pack(fill="x", pady=(0, 15))
+
+        self.tc_file_path = None
+        tc_btn = ttk.Button(file_frame, text="Upload TC PDF", command=lambda: self._upload_pdf("TC"))
+        tc_btn.grid(row=0, column=0, padx=(0, 10), pady=5, sticky="w")
+        self.tc_label = ttk.Label(file_frame, text="No TC file selected", font=("Arial", 9))
+        self.tc_label.grid(row=0, column=1, sticky="w")
+
+        self.ees_file_path = None
+        ees_btn = ttk.Button(file_frame, text="Upload EES PDF", command=lambda: self._upload_pdf("EES"))
+        ees_btn.grid(row=1, column=0, padx=(0, 10), pady=5, sticky="w")
+        self.ees_label = ttk.Label(file_frame, text="No EES file selected", font=("Arial", 9))
+        self.ees_label.grid(row=1, column=1, sticky="w")
+
+        self._build_prompt_section(frame)
+        self._build_context_files_section(frame)
+
+        # Output Format Dropdown
+        format_frame = ttk.Frame(frame)
+        format_frame.pack(fill="x", pady=5)
+        ttk.Label(format_frame, text="Output Format:").pack(side="left", padx=(0, 10))
+        self.output_format_var = tk.StringVar(value=".docx")
+        format_cb = ttk.Combobox(format_frame, textvariable=self.output_format_var, values=[".docx", ".pdf"], state="readonly", width=10)
+        format_cb.pack(side="left")
+
+        # Process Button
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(fill="x", side="bottom", pady=5)
+        self.assignment_process_button = ttk.Button(btn_frame, text="Process Assignment", command=self.start_assignment_thread)
+        self.assignment_process_button.pack(side="right", padx=5)
+        
+        self.progress = ttk.Progressbar(frame, mode='indeterminate')
+
+    def _upload_pdf(self, file_type):
+        path = filedialog.askopenfilename(
+            title=f"Select {file_type} PDF",
+            filetypes=[("PDF Files", "*.pdf"), ("All Files", "*.*")]
+        )
+        if not path:
+            return
+        
+        filename = os.path.basename(path)
+        
+        # Read the text immediately
+        pdf_text = ""
+        try:
+            try:
+                import pymupdf
+                doc = pymupdf.open(path)
+                for page in doc:
+                    pdf_text += page.get_text()
+                doc.close()
+            except ImportError:
+                import fitz
+                doc = fitz.open(path)
+                for page in doc:
+                    pdf_text += page.get_text()
+                doc.close()
+        except Exception as e:
+            messagebox.showerror("PDF Error", f"Could not read PDF: {e}")
+            return
+        
+        if file_type == "TC":
+            if "EES" in filename.upper() and "TC" not in filename.upper():
+                messagebox.showwarning("Validation", "The selected file appears to be an EES file, but you are uploading it as a TC file!")
+            self.tc_file_path = path
+            self.tc_label.config(text=filename)
+            self.tc_pdf_text = pdf_text
+            print(self.tc_pdf_text)
+        elif file_type == "EES":
+            if "TC" in filename.upper() and "EES" not in filename.upper():
+                messagebox.showwarning("Validation", "The selected file appears to be a TC file, but you are uploading it as an EES file!")
+            self.ees_file_path = path
+            self.ees_label.config(text=filename)
+            self.ees_pdf_text = pdf_text
+            print(self.ees_pdf_text)
+
+    def start_assignment_thread(self):
+        self.progress.pack(fill="x", pady=(0, 10))
+        self.progress.start(10)
+        self.assignment_process_button.config(state="disabled")
+        threading.Thread(target=self.run_assignment_task, daemon=True).start()
+
+    def run_assignment_task(self):
+        try:
+            self.process_assignment()
+        finally:
+            self.progress.stop()
+            self.progress.pack_forget()
+            self.assignment_process_button.config(state="normal")
+
+    def process_assignment(self):
+        if not getattr(self, 'tc_pdf_text', None) and not getattr(self, 'ees_pdf_text', None):
+            messagebox.showwarning("Warning", "Please upload at least one assignment PDF (TC or EES).")
+            return
+            
+        current_prompt = self.prompt_text.get("1.0", "end-1c")
+        
+        final_prompt = f'''
+            You are an assistant helping a user answer their assignment questions.
+            You will be given the assignment questions (which are extracted from PDFs).
+            You are also given context provided by the user (which can be files or text).
+            Your job is to read the questions and answer them clearly and thoroughly based on the provided context.
+            If the question requires searching the internet to do so, then you may search the internet to do so.
+            
+            IMPORTANT: Do NOT use markdown formatting (like **bold** or # headings) in your response, because the output will be saved as a plain text-based document. Just use normal text, standard numbers or bullets. Keep the formatting extremely plain.
+            
+            User Context:
+            {current_prompt}
+            
+            '''
+            
+        if getattr(self, 'tc_pdf_text', None):
+            final_prompt += f"\n\nTC Assignment Content:\n{self.tc_pdf_text}"
+        if getattr(self, 'ees_pdf_text', None):
+            final_prompt += f"\n\nEES Assignment Content:\n{self.ees_pdf_text}"
+            
+        try:
+            if not self.ai_handler or not self.ai_handler.is_ready():
+                messagebox.showerror("Error", "AI Client is not connected. Please check your API configuration.")
+                return
+
+            contents_payload = []
+            
+            if hasattr(self, 'selected_files') and self.selected_files:
+                for filepath in self.selected_files:
+                    uploaded_file = self.ai_handler.client.files.upload(file=filepath)
+                    contents_payload.append(uploaded_file)
+                    
+            contents_payload.append(final_prompt)
+            
+            response = self.ai_handler.client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=contents_payload,
+            )
+            llm_output = response.text
+            self._save_assignment_output(llm_output)
+            
+        except Exception as e:
+            messagebox.showerror("API Error", f"An error occurred while calling Gemini:\n{str(e)}")
+
+    def _save_assignment_output(self, text_content):
+        self.root.after(0, lambda: self._prompt_save(text_content))
+
+    def _prompt_save(self, text_content):
+        fmt = self.output_format_var.get()
+        if fmt == ".docx":
+            path = filedialog.asksaveasfilename(defaultextension=".docx", filetypes=[("Word Document", "*.docx")])
+            if path:
+                try:
+                    import docx
+                    doc = docx.Document()
+                    doc.add_paragraph(text_content)
+                    doc.save(path)
+                    messagebox.showinfo("Success", f"Saved to {path}")
+                except Exception as e:
+                    messagebox.showerror("Save Error", f"Failed to save DOCX:\n{e}")
+        elif fmt == ".pdf":
+            path = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF Document", "*.pdf")])
+            if path:
+                try:
+                    from fpdf import FPDF
+                    pdf = FPDF()
+                    pdf.add_page()
+                    pdf.set_font("Arial", size=12)
+                    clean_text = text_content.encode('latin-1', 'replace').decode('latin-1')
+                    pdf.multi_cell(0, 10, txt=clean_text)
+                    pdf.output(path)
+                    messagebox.showinfo("Success", f"Saved to {path}")
+                except Exception as e:
+                    messagebox.showerror("Save Error", f"Failed to save PDF:\n{e}")
 
     # ---- row management --------------------------------------------------
     def rebuild_rows(self) -> None:
@@ -557,42 +810,56 @@ class App:
             # 5. Re-enable the button for future uses
             self.autofill_button.config(state="normal")
     
-    def open_popup(self):
+    def _build_prompt_section(self, parent_frame):
+        # 3. Prompt Section
+        label = ttk.Label(parent_frame, text="Prompt:", font=("Arial", 11, "bold"))
+        label.pack(anchor="w", pady=(0, 5))
+
+        self.prompt_text = tk.Text(parent_frame, height=5, width=50, wrap="word")
+        self.prompt_text.pack(fill="x", pady=(0, 15))
+
+    def _build_context_files_section(self, parent_frame):
+        import_file_btn = ttk.Button(parent_frame, text='Import Context Files', command=self.import_multiple_files)
+        import_file_btn.pack(anchor="w", pady=(0, 5))
+
+        files_header = ttk.Label(parent_frame, text="Selected Context Files:", font=("Arial", 10, "bold"))
+        files_header.pack(anchor="w", pady=(5, 2))
+
+        self.label_imported_files = ttk.Label(parent_frame, text="No files selected", font=("Arial", 10), justify="left", wraplength=400)
+        self.label_imported_files.pack(anchor="w", fill="x", pady=(0, 15))
+
+    def logbook_ai_popup(self):
         self.selected_files = []
 
-        # 1. Create the Toplevel window
-        # 💡 Changed 'popup' to 'self.popup' so other methods can access it easily if needed
-        self.popup = tk.Toplevel(self.root)
+        # 1. Transform the existing Toplevel window
+        for widget in self.popup.winfo_children():
+            widget.destroy()
+
         self.popup.title("Auto-Fill Activities")
-        self.popup.geometry("450x480")  # Slightly increased height to accommodate the progress bar safely
-        self.popup.grab_set()
+        
+        window_width = 450
+        window_height = 480
+        screen_width = self.popup.winfo_screenwidth()
+        screen_height = self.popup.winfo_screenheight()
+        center_x = int((screen_width - window_width) / 2)
+        center_y = int((screen_height - window_height) / 2)
+        self.popup.geometry(f"{window_width}x{window_height}+{center_x}+{center_y}")
 
         # 2. Base Layout Frame
         frame = ttk.Frame(self.popup, padding=20)
         frame.pack(fill="both", expand=True)
 
         # 3. Prompt Section
-        label = ttk.Label(frame, text="Prompt:", font=("Arial", 11, "bold"))
-        label.pack(anchor="w", pady=(0, 5))
-
-        self.prompt_text = tk.Text(frame, height=5, width=50, wrap="word")
-        self.prompt_text.pack(fill="x", pady=(0, 15))
+        self._build_prompt_section(frame)
 
         # 4. File Management Section
-        import_file_btn = ttk.Button(frame, text='Import Files', command=self.import_multiple_files)
-        import_file_btn.pack(anchor="w", pady=(0, 5))
-
-        # Heading for the selected files list
-        files_header = ttk.Label(frame, text="Selected Files:", font=("Arial", 10, "bold"))
-        files_header.pack(anchor="w", pady=(10, 2))
-
-        self.label_imported_files = ttk.Label(frame, text="No files selected", font=("Arial", 10), justify="left", wraplength=400)
-        self.label_imported_files.pack(anchor="w", fill="x", pady=(0, 15))
+        self._build_context_files_section(frame)
 
         self.progress = ttk.Progressbar(frame, mode='indeterminate')
 
         btn_frame = ttk.Frame(frame)
         btn_frame.pack(fill="x", side="bottom", pady=5)
+
 
         self.autofill_button = ttk.Button(btn_frame, text="Auto-Fill", command=self.start_autofill_thread)
         self.autofill_button.pack(side="right", padx=5)
@@ -721,7 +988,8 @@ class App:
     def save_json(self) -> None:
         path = filedialog.asksaveasfilename(
             defaultextension=".json",
-            filetypes=[("JSON", "*.json")],
+
+            types=[("JSON", "*.json")],
         )
         if not path:
             return
