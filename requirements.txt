@@ -1,2 +1,6 @@
 google-genai
 python-dotenv
+pillow
+pymupdf
+python-docx
+fpdf2
